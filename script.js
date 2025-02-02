@@ -25,15 +25,16 @@ const colorList = [
 let currentColorChoice = colorList[9]
 
 const firebaseConfig = {
-    apiKey: "AIzaSyBrpdr3nJyghyxFq45P5cuJIbpOY6sV1zo",
-    authDomain: "pixel-war-b9db6.firebaseapp.com",
-    projectId: "pixel-war-b9db6",
-    storageBucket: "pixel-war-b9db6.firebasestorage.app",
-    messagingSenderId: "235773191644",
-    appId: "1:235773191644:web:53b48f845ae04e0cef9b19"
+  apiKey: "AIzaSyB3pMyrMDTbsnWmRDsroSREHPhm1Eog144",
+  authDomain: "warrrr-5674a.firebaseapp.com",
+  projectId: "warrrr-5674a",
+  storageBucket: "warrrr-5674a.firebasestorage.app",
+  messagingSenderId: "762690248667",
+  appId: "1:762690248667:web:67bcb5b327346647eb11fe"
 };
 
-firebase.initializeApp(firebaseConfig)
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
 const db = firebase.firestore()
 
 colorList.forEach(color => {
