@@ -33,7 +33,6 @@ const firebaseConfig = {
   appId: "1:762690248667:web:67bcb5b327346647eb11fe"
 };
 
-// Инициализация Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
@@ -120,7 +119,6 @@ function drawGrids(ctx, width, height, cellWidth, cellHeight) {
 
 drawGrids(gridCtx, game.width, game.height, gridCellSize, gridCellSize);
 
-// Слушаем изменения в коллекции 'pixels'
 onSnapshot(collection(db, 'pixels'), (querySnapshot) => {
     querySnapshot.docChanges().forEach((change) => {
         const { x, y, color } = change.doc.data();
