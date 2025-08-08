@@ -1,9 +1,7 @@
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js';
-import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, onSnapshot } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js';
-
 const colorsChoice = document.querySelector('#colorsChoice');
 const game = document.querySelector('#game');
 const cursor = document.querySelector('#cursor');
+const authButton = document.querySelector('#authButton');  // Кнопка для аутентификации
 
 game.width = 1200;
 game.height = 600;
@@ -11,10 +9,13 @@ const gridCellSize = 10;
 
 const ctx = game.getContext('2d');
 
+// Создаём отдельный canvas для рисования сетки
 const gridCanvas = document.createElement('canvas');
 gridCanvas.width = game.width;
 gridCanvas.height = game.height;
 const gridCtx = gridCanvas.getContext('2d');
+
+// Добавляем gridCanvas в DOM, чтобы он был рядом с основным canvas
 game.parentElement.appendChild(gridCanvas);
 
 const colorList = [
@@ -33,8 +34,37 @@ const firebaseConfig = {
   appId: "1:762690248667:web:67bcb5b327346647eb11fe"
 };
 
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+// Логика аутентификации
+authButton.addEventListener('click', () => {
+    const email = prompt('Enter your email:');
+    const password = prompt('Enter your password:');
+
+    auth.signInWithEmailAndPassword(email, password)
+        .then(userCredential => {
+            const user = userCredential.user;
+            console.log('User signed in:', user);
+            alert('You are now logged in!');
+            authButton.textContent = 'Log Out'; // Меняем текст кнопки на "Выйти"
+        })
+        .catch(error => {
+            console.error(error);
+            alert('Failed to sign in. Please check your credentials.');
+        });
+});
+
+// Логика выхода
+auth.onAuthStateChanged(user => {
+    if (user) {
+        authButton.textContent = 'Log Out'; // Кнопка "Выйти"
+    } else {
+        authButton.textContent = 'Log In'; // Кнопка "Войти"
+    }
+});
 
 colorList.forEach(color => {
     const colorItem = document.createElement('div');
@@ -43,7 +73,9 @@ colorList.forEach(color => {
 
     colorItem.addEventListener('click', () => {
         currentColorChoice = color;
+
         colorItem.innerHTML = `<i class="fa-solid fa-check"></i>`;
+
         setTimeout(() => {
             colorItem.innerHTML = "";
         }, 1000);
@@ -52,55 +84,98 @@ colorList.forEach(color => {
 
 function createPixel(x, y, color) {
     ctx.beginPath();
-    ctx.fillStyle = color;
-    ctx.fillRect(x, y, gridCellSize, gridCellSize);
-}
 
-function deletePixel(x, y) {
-    createPixel(x, y, "#FFFFFF");
-}
-
-async function addPixelIntoGame(x, y) {
-    const pixelRef = doc(db, 'pixels', `${x}-${y}`);
-    const docSnap = await getDoc(pixelRef);
-
-    if (docSnap.exists()) {
-        deletePixel(x, y);
-        await deleteDoc(pixelRef);
+    if (color.toUpperCase() === "#FFFFFF") {
+        // Ещё меньший отступ — теперь 3 пикселя со всех сторон
+        const inset = 3;
+        ctx.fillStyle = color;
+        ctx.fillRect(
+            x + inset,
+            y + inset,
+            gridCellSize - inset * 2,
+            gridCellSize - inset * 2
+        );
     } else {
-        createPixel(x, y, currentColorChoice);
-        await setDoc(pixelRef, { x, y, color: currentColorChoice });
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, gridCellSize, gridCellSize);
     }
 }
 
-let isShiftPressed = false;
-document.addEventListener('keydown', (event) => {
-    if (event.key === 'Shift') {
-        isShiftPressed = true;
+
+
+
+// Добавляем пиксель в игру и в Firestore
+function addPixelIntoGame() {
+    const user = auth.currentUser;
+    if (!user) {
+        alert('You must be logged in to place pixels!');
+        return;
     }
-});
-document.addEventListener('keyup', (event) => {
-    if (event.key === 'Shift') {
-        isShiftPressed = false;
+
+    const x = cursor.offsetLeft;
+    const y = cursor.offsetTop - game.offsetTop;
+    const pixelKey = `${x}-${y}`;
+    const pixelRef = db.collection('pixels').doc(pixelKey);
+
+    const isWhite = currentColorChoice.toUpperCase() === "#FFFFFF";
+
+    if (isWhite) {
+        // Удаляем текущий белый пиксель
+        pixelRef.delete()
+            .then(() => {
+                console.log(`✅ Удалён белый пиксель: ${pixelKey}`);
+                deletePixel(x, y);
+            })
+            .catch(err => {
+                console.error("❌ Ошибка при удалении белого пикселя:", err);
+            });
+
+        // Удаляем пиксель под ним
+        const belowY = y + gridCellSize;
+        const belowKey = `${x}-${belowY}`;
+        const belowRef = db.collection('pixels').doc(belowKey);
+
+        belowRef.get().then(doc => {
+            if (doc.exists) {
+                belowRef.delete().then(() => {
+                    console.log(`✅ Удалён пиксель под белым: ${belowKey}`);
+                    deletePixel(x, belowY);
+                }).catch(err => {
+                    console.error("❌ Ошибка при удалении нижнего пикселя:", err);
+                });
+            }
+        });
+
+        // НИЧЕГО НЕ СОХРАНЯЕМ! — просто return
+        return;
     }
-});
 
-game.addEventListener('mousemove', function (event) {
-    const cursorLeft = event.clientX - (cursor.offsetWidth / 2);
-    const cursorTop = event.clientY - (cursor.offsetHeight / 2);
+    // 🟩 Обычная логика, если цвет НЕ белый
+    pixelRef.get().then(docSnapshot => {
+        if (docSnapshot.exists) {
+            pixelRef.delete().then(() => {
+                console.log(`🔁 Старый пиксель удалён: ${pixelKey}`);
+            }).catch(err => {
+                console.error("❌ Ошибка при удалении:", err);
+            });
+        }
 
-    cursor.style.left = Math.floor(cursorLeft / gridCellSize) * gridCellSize + "px";
-    cursor.style.top = Math.floor(cursorTop / gridCellSize) * gridCellSize + "px";
+        const newPixel = { x, y, color: currentColorChoice };
+        pixelRef.set(newPixel, { merge: true })
+            .then(() => {
+                console.log(`✅ Установлен новый пиксель: ${pixelKey}`);
+                createPixel(x, y, currentColorChoice);
+            })
+            .catch(err => {
+                console.error("❌ Ошибка при установке пикселя:", err);
+            });
+    }).catch(error => {
+        console.error("❌ Ошибка при получении пикселя:", error);
+    });
+}
 
-    if (isShiftPressed) {
-        addPixelIntoGame(parseInt(cursor.style.left), parseInt(cursor.style.top));
-    }
-});
 
-game.addEventListener('click', function () {
-    addPixelIntoGame(parseInt(cursor.style.left), parseInt(cursor.style.top));
-});
-
+// Функция рисования сетки
 function drawGrids(ctx, width, height, cellWidth, cellHeight) {
     ctx.beginPath();
     ctx.strokeStyle = "#ccc";
@@ -117,11 +192,26 @@ function drawGrids(ctx, width, height, cellWidth, cellHeight) {
     ctx.stroke();
 }
 
+// Рисуем сетку на gridCtx
 drawGrids(gridCtx, game.width, game.height, gridCellSize, gridCellSize);
 
-onSnapshot(collection(db, 'pixels'), (querySnapshot) => {
-    querySnapshot.docChanges().forEach((change) => {
-        const { x, y, color } = change.doc.data();
-        createPixel(x, y, color);
-    });
+// Двигаем курсор
+game.addEventListener('mousemove', function (event) {
+    const cursorLeft = event.clientX - (cursor.offsetWidth / 2);
+    const cursorTop = event.clientY - (cursor.offsetHeight / 2);
+
+    cursor.style.left = Math.floor(cursorLeft / gridCellSize) * gridCellSize + "px";
+    cursor.style.top = Math.floor(cursorTop / gridCellSize) * gridCellSize + "px";
 });
+
+// Получаем все пиксели из Firestore один раз при загрузке
+function loadPixels() {
+    db.collection('pixels').get().then(querySnapshot => {
+        querySnapshot.forEach(doc => {
+            const { x, y, color } = doc.data();
+            createPixel(x, y, color);
+        });
+    });
+}
+
+loadPixels();
